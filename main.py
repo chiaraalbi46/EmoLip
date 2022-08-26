@@ -41,15 +41,11 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
 
                     if bce == 1:
                         # quando voglio usare bce loss e l'output del classifier è (b, 1)
-                        # labels = labels.unsqueeze(1).float()  # [10] int64 --> [10, 1] float32
-                        outputs = outputs.squeeze(1)  # .float()
+                        labels = labels.unsqueeze(1).float()  # [10] int64 --> [10, 1] float32
 
                     loss = criterion(outputs, labels)
 
                     # Get model predictions
-                    # _, preds = torch.max(outputs, 1)
-                    # o anche outputs.argmax(dim=-1) mi restituisce gli indici dei valori massimi
-
                     if bce == 1:
                         # quando voglio usare bce loss e l'output del classifier è (b, 1)
                         preds = outputs > 0.5
@@ -73,16 +69,13 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
 
             epoch_loss = sum(running_loss) / len(running_loss)
             epoch_acc = sum(running_corrects) / len(running_corrects)
-            all_labels = torch.cat(all_labels, 0)
-            all_preds = torch.cat(all_preds, 0)
 
-            # build a confusione matrix for each epoch
-            # cf_matrix = sklearn.metrics.confusion_matrix(all_labels.cpu().numpy(), all_preds.cpu().numpy())
-            # df_cm = pd.DataFrame(cf_matrix / np.sum(cf_matrix), index=[i for i in ['emolitico', 'lipemico']],
-            #                      columns=[i for i in ['emolitico', 'lipemico']])
-            # plt.figure(figsize=(12, 7))
-            # sn.heatmap(df_cm, annot=True)
-            # plt.savefig(save_weights_path + '/' + phase + '_cf_matrix_' + str(epoch) + '.png')
+            if bce == 1:
+                all_labels = torch.cat(all_labels, 0).squeeze(1)
+                all_preds = torch.cat(all_preds, 0).squeeze(1)
+            else:
+                all_labels = torch.cat(all_labels, 0)
+                all_preds = torch.cat(all_preds, 0)
 
             epoch_f1_score = sklearn.metrics.f1_score(all_labels.cpu().numpy(), all_preds.cpu().numpy(),
                                                       zero_division=0)
@@ -100,10 +93,9 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
             experiment.log_metric(phase + '_epoch_f1_score', epoch_f1_score, step=epoch)
             experiment.log_metric(phase + '_epoch_balanced_acc', epoch_balanced_acc_score, step=epoch)
 
-            # loggare f1 score e balanced accuracy con sklearn
-
+            # long() --> torch.int64, int() --> torch.int32
             experiment.log_confusion_matrix(title=phase + '_confusion_matrix_' + str(epoch),
-                                            y_true=all_labels.cpu(), y_predicted=all_preds.cpu(),
+                                            y_true=all_labels.cpu().long(), y_predicted=all_preds.cpu().long(),
                                             labels=['emolitico', 'lipemico'], step=epoch,
                                             file_name=phase + '_confusion_matrix_' + str(epoch) + '.json')
 
@@ -136,7 +128,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
 
 if __name__ == '__main__':
     from comet_ml import Experiment
-    from MVCNN import MVCNN
+    from MVCNN import MVCNN, MVCNN_small
     import torch
     import torch.optim as optim
     import os
@@ -155,7 +147,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--epochs", dest="epochs", default=2, help="number of epochs")
     parser.add_argument("--batch_size", dest="batch_size", default=10, help="batch size")
-    parser.add_argument("--lr", dest="lr", default=0.0005, help="learning rate train")
+    parser.add_argument("--lr", dest="lr", default=0.0005, help="learning rate train")  # 0.00005 for fine tuning
 
     parser.add_argument("--num_classes", dest="num_classes", default=1, help="number of classes of the dataset")
 
@@ -178,6 +170,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_aug", dest="data_aug", default=0,
                         help="1 for data augmentation (on train), 0 otherwise")
     parser.add_argument("--norm", dest="norm", default=0, help="1 to apply normalization on images, 0 otherwise")
+    parser.add_argument("--small_net", dest="small_net", default=0, help="1 to use MVCNN_small, 0 otherwise")
 
     args = parser.parse_args()
 
@@ -185,7 +178,10 @@ if __name__ == '__main__':
     print("Device: ", device)
 
     # net
-    model = MVCNN(num_classes=int(args.num_classes))
+    if int(args.small_net) == 1:
+        model = MVCNN_small(num_classes=int(args.num_classes))
+    else:
+        model = MVCNN(num_classes=int(args.num_classes))
 
     if int(args.fine_tune) == 0:
         # freeze the weights in the feature extraction block of the network (resnet base)
@@ -194,8 +190,14 @@ if __name__ == '__main__':
     else:
         print("Fine tuning")
         # unfreeze the weights ... (meglio non tutti tutti)
-        for param in model.parameters():
-            param.requires_grad = True
+        # for param in model.parameters():
+        #     param.requires_grad = True
+        ct = 0
+        for child in model.features.children():
+            if ct < 7:
+                for param in child.parameters():
+                    param.requires_grad = False
+            ct += 1
 
     model.to(device)
     EPOCHS = int(args.epochs)
@@ -266,6 +268,7 @@ if __name__ == '__main__':
             print("Weight the loss")
             cd = get_class_distribution(train_dataset)
             pos_weight = cd[0] / cd[1]  # #negativi/#positivi (#0/#1)  # ho usato la distribuzione nel training ...
+            pos_weight = torch.tensor(pos_weight, dtype=torch.float).to(device)
 
             criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         else:
@@ -297,7 +300,8 @@ if __name__ == '__main__':
         "normalization": int(args.norm),
         "loss_weights": int(args.loss_weights),
         "seed": int(args.seed),
-        "fine_tune": int(args.fine_tune)
+        "fine_tune": int(args.fine_tune),
+        "small_net": int(args.small_net)
     }
 
     experiment.log_parameters(hyper_params)
