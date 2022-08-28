@@ -50,7 +50,7 @@ class TubeDataset(Dataset):
         return len(self.ids)
 
     # def _transform(self, image, split):  # qui data augmentation ...
-    def _transform(self, image):
+    def _transform(self, image, lab):
         # indipendentemente da train/val, data aug questi passaggi deve farli
         transform = transforms.Compose([
             transforms.ToTensor()
@@ -75,7 +75,7 @@ class TubeDataset(Dataset):
                 transforms.Resize((h, w), interpolation=transforms.InterpolationMode.NEAREST)
             ])
 
-        if self.data_aug == 1:  # and split == 'train':
+        if self.data_aug == 1 and lab == 'lipemico':  # this apply data augmentation on lipemic samples (minority class)
             # print("Data Augmentation on training set")
             transform = transforms.Compose([
                 transforms.ToTensor(),
@@ -121,9 +121,9 @@ class TubeDataset(Dataset):
                 # print("Sostituisco l'immagine corrotta con la seconda immagine del gruppo")
                 # print("im: ", im_group[2])
                 # im_array = self._transform(self.read_image_as_array(im_group[2]), split=split)
-                im_array = self._transform(self.read_image_as_array(im_group[2]))
+                im_array = self._transform(self.read_image_as_array(im_group[2]), lab)
             else:
-                im_array = self._transform(im_array)
+                im_array = self._transform(im_array, lab)
             view.append(im_array)
 
         # view = np.array(view)  # num_im, h, w, c

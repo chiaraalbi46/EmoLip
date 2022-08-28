@@ -75,9 +75,9 @@ if __name__ == '__main__':
                      window_size=window_size,
                      target_size=(IMG_HEIGHT, IMG_WIDTH),
                      class_id_map=class_id_map,
-                     num_views=8, data_aug=0, norm=0)
+                     num_views=8, data_aug=1, norm=0)
 
-    plug_name = 'a0fee'  # id view
+    plug_name = 'a0fed'  # id view
     show_view(plug_name, da)
 
 

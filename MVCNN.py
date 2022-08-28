@@ -9,7 +9,7 @@ class MVCNN(torch.nn.Module):
         super(MVCNN, self).__init__()
         resnet = models.resnet34(weights=models.ResNet34_Weights.DEFAULT)  # nb: si aspetta (B, C, H, W)
         fc_in_features = resnet.fc.in_features
-        print("fc in features: ", fc_in_features)
+        # print("fc in features: ", fc_in_features)
         self.features = torch.nn.Sequential(*list(resnet.children())[:-1])
         self.classifier = torch.nn.Sequential(
             torch.nn.Dropout(),  # di default p=0.5
