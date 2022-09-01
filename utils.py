@@ -64,7 +64,7 @@ if __name__ == '__main__':
     from dataset import TubeDataset
     import pandas as pd
 
-    datasetcsv = pd.read_csv('train_val_dataset.csv', names=['data', 'id', 'image', 'label', 'split'])
+    datasetcsv = pd.read_csv('train_val_dataset_augmented_42.csv', names=['data', 'id', 'image', 'label', 'split'])
     class_id_map = {'emolitico': 0, 'lipemico': 1}
 
     # choose data_aug, norm

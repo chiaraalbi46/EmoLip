@@ -143,7 +143,7 @@ if __name__ == '__main__':
     import argparse
     from utils import get_class_distribution
 
-    parser = argparse.ArgumentParser(description="Train ViT")
+    parser = argparse.ArgumentParser(description="Train MVCNN")
 
     parser.add_argument("--epochs", dest="epochs", default=2, help="number of epochs")
     parser.add_argument("--batch_size", dest="batch_size", default=10, help="batch size")
@@ -161,12 +161,14 @@ if __name__ == '__main__':
                         help="path to csv containing the dataset images and labels grouped by data and id")
 
     parser.add_argument("--fine_tune", dest="fine_tune", default=0, help="1 for fine tuning, 0 otherwise")
-    parser.add_argument("--bce", dest="bce", default=0, help="1 for bce with logits loss, 0 for crossentropy")
+    parser.add_argument("--bce", dest="bce", default=1, help="1 for bce with logits loss, 0 for crossentropy")
     parser.add_argument("--loss_weights", dest="loss_weights", default=0,
                         help="1 to weight the loss function, 0 otherwise")
 
     parser.add_argument("--seed", dest="seed", default=42, help="42 for saved split, a number different from 0 "
                                                                 "to create a new train/validation split")
+    parser.add_argument("--val_perc", dest="val_perc", default=20, help="% for validation set")
+
     parser.add_argument("--data_aug", dest="data_aug", default=0,
                         help="1 for data augmentation (on train), 0 otherwise")
     parser.add_argument("--norm", dest="norm", default=0, help="1 to apply normalization on images, 0 otherwise")
@@ -209,9 +211,9 @@ if __name__ == '__main__':
         datasetcsv = pd.read_csv(args.dataset_csv, names=['data', 'id', 'image', 'label', 'split'])
     else:
         print("Create a new csv file for split")
-        csv_out = './train_val_dataset_' + str(args.seed)
-        write_csv_split(args.dataset_csv, csv_out, seed=int(args.seed))
-        datasetcsv = pd.read_csv(args.dataset_csv, names=['data', 'id', 'image', 'label', 'split'])
+        csv_out = './train_val_dataset_' + str(args.seed) + '.csv'
+        write_csv_split(args.dataset_csv, csv_out, seed=int(args.seed), val_perc=int(args.val_perc))
+        datasetcsv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
 
     g = datasetcsv.groupby('split')
     train_group = g.get_group('train')  # dataframe train
@@ -300,6 +302,7 @@ if __name__ == '__main__':
         "normalization": int(args.norm),
         "loss_weights": int(args.loss_weights),
         "seed": int(args.seed),
+        "val_perc": int(args.val_perc),
         "fine_tune": int(args.fine_tune),
         "small_net": int(args.small_net)
     }

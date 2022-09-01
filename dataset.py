@@ -6,13 +6,9 @@ from PIL import Image
 import numpy as np
 
 import torchvision.transforms as transforms
-from sklearn.model_selection import StratifiedShuffleSplit
 
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data.sampler import SubsetRandomSampler
 
-# todo: versione che posso usare con sampler e data augmentation (dovrei prevedere di istanziare un dataset come prima
-#  ... però come gestisco transform ?)
 
 # map-style dataset (implements __getitem__() and __len__() protocols)
 class TubeDataset(Dataset):
@@ -114,19 +110,14 @@ class TubeDataset(Dataset):
         # split = id_group.get_group(selected_id)['split'].values[0]
         view = []
         for i in range(len(im_group)):
-            # im è un path
-            # im_array = self._transform(self.read_image_as_array(im_group[i]), split=split)
             im_array = self.read_image_as_array(im_group[i])  # pil or None
             if im_array is None:
                 # print("Sostituisco l'immagine corrotta con la seconda immagine del gruppo")
-                # print("im: ", im_group[2])
-                # im_array = self._transform(self.read_image_as_array(im_group[2]), split=split)
                 im_array = self._transform(self.read_image_as_array(im_group[2]), lab)
             else:
                 im_array = self._transform(im_array, lab)
             view.append(im_array)
 
-        # view = np.array(view)  # num_im, h, w, c
         view = torch.stack(view, 0)  # num_views, c, h, w view è un tensor
         y = self.label_encoder[lab]
 
@@ -135,9 +126,6 @@ class TubeDataset(Dataset):
     def read_image_as_array(self, path):
         import random
 
-        # image_array = cv2.imread(path)
-        # image_array = Image.open(path)
-        # image_array = np.array(image_array)
         try:
             image_array = Image.open(path)
             image_array.load()
@@ -157,15 +145,18 @@ class TubeDataset(Dataset):
         originy = self.window_origin[0] + y
 
         if image_array is not None:
-            image_array = np.array(image_array)
-            # random rectangle roughly centered on the original window
-            image_array = image_array[originy:originy + self.window_size[0], originx:originx + self.window_size[1]]
-            image_array = Image.fromarray(image_array, mode='RGB')
+            image_array = image_array.convert('RGB')
+            # nel caso di dataset aumentato ho delle immagini che sono già croppate ...
+            if image_array.height == 960 and image_array.width == 1280:  # dimensioni originali delle immagini
+                image_array = np.array(image_array)
+                # random rectangle roughly centered on the original window
+                image_array = image_array[originy:originy + self.window_size[0], originx:originx + self.window_size[1]]
+                image_array = Image.fromarray(image_array, mode='RGB')
 
         return image_array
 
 
-def write_csv_split(csv_in, csv_out, seed):  # open.csv, train_val_dataset.csv
+def write_csv_split(csv_in, csv_out, seed, val_perc):  # open.csv, train_val_dataset.csv
     import csv
 
     datasetcsv = pd.read_csv(csv_in, names=['data', 'id', 'image', 'label'])
@@ -174,7 +165,10 @@ def write_csv_split(csv_in, csv_out, seed):  # open.csv, train_val_dataset.csv
     _, idx = np.unique(ids, return_index=True)
     unique_id = ids[np.sort(idx)]  # this keeps the order of the ids in the dataframe
 
-    train_split, val_split = torch.utils.data.random_split(unique_id, [93, 24],
+    val_size = round((val_perc / 100) * len(unique_id))
+    train_size = len(unique_id) - val_size
+
+    train_split, val_split = torch.utils.data.random_split(unique_id, [train_size, val_size],
                                                            generator=torch.Generator().manual_seed(seed))
 
     # ri etichetto il dataframe
@@ -216,8 +210,16 @@ if __name__ == '__main__':
 
     BATCH_SIZE = 10
 
-    datasetcsv = pd.read_csv('train_val_dataset.csv', names=['data', 'id', 'image', 'label', 'split'])
-    g = datasetcsv.groupby('split')
+    # datasetcsv = pd.read_csv('augmented_dataset.csv', names=['data', 'id', 'image', 'label'])
+    csv_in = 'augmented_dataset.csv'
+    csv_out = './train_val_dataset_augmented_' + str(42) + '.csv'
+    write_csv_split(csv_in, csv_out, seed=42, val_perc=20)
+    new_csv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
+
+    # 20% di 192 = 38 val size --> 38*8 = 304 val images
+    # 192 - 38 = 154 train size --> 154*8 = 1232 train images
+
+    g = new_csv.groupby('split')
     train_group = g.get_group('train')  # dataframe train
     validation_group = g.get_group('validation')
 
@@ -231,8 +233,6 @@ if __name__ == '__main__':
 
     cd_t = get_class_distribution(da_t)
 
-    train_loader = DataLoader(da_t, batch_size=BATCH_SIZE, shuffle=True)  # num_workers=8  ...
-    # val_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
-    # data_loaders = {'train': train_loader, 'val': val_loader}
+    train_loader = DataLoader(da_t, batch_size=BATCH_SIZE, shuffle=True)
 
 
