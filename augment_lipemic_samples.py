@@ -4,10 +4,7 @@ Samples created are saved on a new dataset folder. """
 # individuo le view di lipemici, ne seleziono un certo numero tale per cui poi ho bilanciato il dataset
 # attualmente, con l'aggiunta dei campioni del 27 luglio, abbiamo 96 view 'emolitico' e 27 view 'lipemico'
 # --> dovremmo ricreare 69 view di lipemico ...
-import os.path
 
-import pandas as pd
-import matplotlib.pyplot as plt
 
 # nb: non posso fare data augmentation sulle immagini senza averle prima tagliate ... il crop non tornerebbe dopo :(
 
@@ -69,6 +66,9 @@ if __name__ == '__main__':
 
     from dataset import write_csv_split
     import argparse
+    import pandas as pd
+    import os.path
+    import matplotlib.pyplot as plt
 
     parser = argparse.ArgumentParser(description="Create augmented lipemic samples")
 
@@ -132,7 +132,10 @@ if __name__ == '__main__':
                     os.makedirs(augmented_path + data_fold)
                 filename = augmented_path + data_fold + '/' + 'Sample_' + id_new + elements[1] + elements[2]
 
-                plt.imsave(filename, im_array)
+                if not os.path.exists(filename):
+                  plt.imsave(filename, im_array)
+                else:
+                  print("file già presente")
 
                 row = [data, id_new, filename, lab]
                 block.append(row)
@@ -152,7 +155,7 @@ if __name__ == '__main__':
     # unique_id = ids[np.sort(idx)]
 
     csv_in = args.augmented_csv  # 'augmented_dataset.csv'
-    csv_out = args.train_val_csv + args.seed + '.csv'
+    csv_out = args.train_val_csv + str(args.seed) + '.csv'
     write_csv_split(csv_in, csv_out, seed=int(args.seed), val_perc=int(args.val_perc))
     new_csv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
 

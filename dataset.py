@@ -158,6 +158,7 @@ class TubeDataset(Dataset):
 
 def write_csv_split(csv_in, csv_out, seed, val_perc):  # open.csv, train_val_dataset.csv
     import csv
+    import pandas as pd
 
     datasetcsv = pd.read_csv(csv_in, names=['data', 'id', 'image', 'label'])
     id_group = datasetcsv.groupby(['id'])

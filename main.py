@@ -5,6 +5,7 @@ from utils import compute_sample_weight
 def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment, save_weights_path, bce): # class_weights
     # import matplotlib.pyplot as plt
     # import seaborn as sn
+    import sklearn.metrics
 
     since = time.time()
 
