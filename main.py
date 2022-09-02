@@ -149,6 +149,7 @@ if __name__ == '__main__':
     parser.add_argument("--epochs", dest="epochs", default=2, help="number of epochs")
     parser.add_argument("--batch_size", dest="batch_size", default=10, help="batch size")
     parser.add_argument("--lr", dest="lr", default=0.0005, help="learning rate train")  # 0.00005 for fine tuning
+    parser.add_argument("--weight_decay", dest="weight_decay", default=0., help="weight decay")
 
     parser.add_argument("--num_classes", dest="num_classes", default=1, help="number of classes of the dataset")
 
@@ -288,7 +289,7 @@ if __name__ == '__main__':
         else:
             criterion = torch.nn.CrossEntropyLoss()
 
-    optimizer = optim.Adam(model.classifier.parameters(), lr=float(args.lr))
+    optimizer = optim.Adam(model.classifier.parameters(), lr=float(args.lr), weight_decay=int(args.weight_decay))
 
     # Comet ml integration
     experiment = Experiment(project_name=args.name_proj)
@@ -305,7 +306,8 @@ if __name__ == '__main__':
         "seed": int(args.seed),
         "val_perc": int(args.val_perc),
         "fine_tune": int(args.fine_tune),
-        "small_net": int(args.small_net)
+        "small_net": int(args.small_net),
+        "weight_decay": int(args.weight_decay)
     }
 
     experiment.log_parameters(hyper_params)
