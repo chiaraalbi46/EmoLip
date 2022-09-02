@@ -152,7 +152,7 @@ if __name__ == '__main__':
     # unique_id = ids[np.sort(idx)]
 
     csv_in = args.augmented_csv  # 'augmented_dataset.csv'
-    csv_out = args.train_val + args.seed + '.csv'
+    csv_out = args.train_val_csv + args.seed + '.csv'
     write_csv_split(csv_in, csv_out, seed=int(args.seed), val_perc=int(args.val_perc))
     new_csv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
 
