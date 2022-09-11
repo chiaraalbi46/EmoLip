@@ -1,5 +1,4 @@
 import time
-from utils import compute_sample_weight
 
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment, save_weights_path, bce): # class_weights
@@ -22,8 +21,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
             else:
                 model.eval()  # Set model to evaluate mode
 
-            running_loss = []
-            running_corrects = []
+            correct, total, running_loss = 0, 0, 0
             all_preds = []
             all_labels = []
             # Iterate over data.
@@ -40,21 +38,22 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
                     # Get model outputs and calculate loss
                     outputs = model(inputs)
 
-                    if bce == 1:
+                    if bce != 0:  # bce e focal loss
                         # quando voglio usare bce loss e l'output del classifier è (b, 1)
                         labels = labels.unsqueeze(1).float()  # [10] int64 --> [10, 1] float32
 
                     loss = criterion(outputs, labels)
 
                     # Get model predictions
-                    if bce == 1:
+                    if bce != 0:
                         # quando voglio usare bce loss e l'output del classifier è (b, 1)
                         preds = outputs > 0.5
-                        acc = (preds == labels).float().mean()
+                        acc = (preds == labels).float().sum().item()  # mean()
                     else:
                         preds = outputs.argmax(dim=-1)
-                        acc = (preds == labels).float().mean()
-                        # it is the same of (outputs == labels).sum().item() / labels.size(0)
+                        acc = (preds == labels).float().sum().item()  # .mean()
+                        # acc = (preds == labels).float().mean() is the same of
+                        # (outputs == labels).sum().item() / labels.size(0)
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -62,16 +61,17 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
                         optimizer.step()
 
                 # statistics
-                running_loss.append(loss.item())
-                running_corrects.append(acc.item())
+                total += labels.size(0)
+                correct += acc
+                running_loss += loss.item()
 
                 all_preds.append(preds.cpu())
                 all_labels.append(labels.cpu())
 
-            epoch_loss = sum(running_loss) / len(running_loss)
-            epoch_acc = sum(running_corrects) / len(running_corrects)
+            epoch_acc = correct / total
+            epoch_loss = running_loss / len(train_loader)
 
-            if bce == 1:
+            if bce != 0:
                 all_labels = torch.cat(all_labels, 0).squeeze(1)
                 all_preds = torch.cat(all_preds, 0).squeeze(1)
             else:
@@ -83,14 +83,9 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
             epoch_balanced_acc_score = sklearn.metrics.balanced_accuracy_score(all_labels.cpu().numpy(),
                                                                                all_preds.cpu().numpy())
 
-            # epoch_weighted_acc = sklearn.metrics.accuracy_score(all_labels.cpu().numpy(), all_preds.cpu().numpy(),
-            #                                                     sample_weight=compute_sample_weight(class_weights,
-            #                                                                                         all_labels.cpu().numpy()))
-
             # log metrics on comet ml
             experiment.log_metric(phase + '_epoch_loss', epoch_loss, step=epoch)
             experiment.log_metric(phase + '_epoch_acc', epoch_acc, step=epoch)
-            # experiment.log_metric(phase + '_weighted_epoch_acc', epoch_weighted_acc, step=epoch)
             experiment.log_metric(phase + '_epoch_f1_score', epoch_f1_score, step=epoch)
             experiment.log_metric(phase + '_epoch_balanced_acc', epoch_balanced_acc_score, step=epoch)
 
@@ -101,8 +96,6 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs, experiment
                                             file_name=phase + '_confusion_matrix_' + str(epoch) + '.json')
 
             print('{} Loss: {:.4f} - Acc: {:.4f} '.format(phase, epoch_loss, epoch_acc))
-            # print('{} Loss: {:.4f} - Acc: {:.4f} - Weighted Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc,
-            #                                                                     epoch_weighted_acc))
 
             print(sklearn.metrics.classification_report(all_labels.cpu(), all_preds.cpu(),
                                                         target_names=['emolitico', 'lipemico']))
@@ -136,13 +129,12 @@ if __name__ == '__main__':
     import pandas as pd
     import numpy as np
     import sklearn
-    # from sklearn.model_selection import StratifiedShuffleSplit
 
     from torch.utils.data import DataLoader
-    # from torch.utils.data.sampler import SubsetRandomSampler
     from dataset import TubeDataset, write_csv_split
     import argparse
     from utils import get_class_distribution
+    from focal_loss import FL
 
     parser = argparse.ArgumentParser(description="Train MVCNN")
 
@@ -163,7 +155,8 @@ if __name__ == '__main__':
                         help="path to csv containing the dataset images and labels grouped by data and id")
 
     parser.add_argument("--fine_tune", dest="fine_tune", default=0, help="1 for fine tuning, 0 otherwise")
-    parser.add_argument("--bce", dest="bce", default=1, help="1 for bce with logits loss, 0 for crossentropy")
+    parser.add_argument("--bce", dest="bce", default=1,
+                        help="1 for bce with logits loss, 0 for crossentropy, 2 for focal loss")
     parser.add_argument("--loss_weights", dest="loss_weights", default=0,
                         help="1 to weight the loss function, 0 otherwise")
 
@@ -175,6 +168,8 @@ if __name__ == '__main__':
                         help="1 for data augmentation (on train), 0 otherwise")
     parser.add_argument("--norm", dest="norm", default=0, help="1 to apply normalization on images, 0 otherwise")
     parser.add_argument("--small_net", dest="small_net", default=0, help="1 to use MVCNN_small, 0 otherwise")
+    parser.add_argument("--val_orig", dest="val_orig", default=0,
+                        help="1 to use validation with no augmentation of lipemic samples, 0 otherwise")
 
     args = parser.parse_args()
 
@@ -214,7 +209,11 @@ if __name__ == '__main__':
     else:
         print("Create a new csv file for split")
         csv_out = './train_val_dataset_' + str(args.seed) + '.csv'
-        write_csv_split(args.dataset_csv, csv_out, seed=int(args.seed), val_perc=int(args.val_perc))
+        if int(args.val_orig) == 1:
+            # only when we are using augmented_dataset.csv
+            csv_out = './train_with_val_not_augmented_' + str(args.seed) + '.csv'
+        write_csv_split(args.dataset_csv, csv_out, seed=int(args.seed), val_perc=int(args.val_perc),
+                        val_orig=int(args.val_orig))
         datasetcsv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
 
     g = datasetcsv.groupby('split')
@@ -277,7 +276,7 @@ if __name__ == '__main__':
             criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         else:
             criterion = torch.nn.BCEWithLogitsLoss()
-    else:
+    elif int(args.bce) == 0:
         print("Using CrossEntropyLoss")
         if int(args.loss_weights) == 1:
             print("Weight the loss")
@@ -288,6 +287,9 @@ if __name__ == '__main__':
             criterion = torch.nn.CrossEntropyLoss(weight=weight)
         else:
             criterion = torch.nn.CrossEntropyLoss()
+    else:
+        print("Using FocalLoss")
+        criterion = FL(reduction='mean', gamma=2.)  # set as hyperparms ...
 
     optimizer = optim.Adam(model.classifier.parameters(), lr=float(args.lr), weight_decay=int(args.weight_decay))
 
@@ -302,8 +304,10 @@ if __name__ == '__main__':
         "learning_rate": float(args.lr),
         "data_aug": int(args.data_aug),
         "normalization": int(args.norm),
+        "bce:": int(args.bce),
         "loss_weights": int(args.loss_weights),
         "seed": int(args.seed),
+        "val_orig": int(args.val_orig),
         "val_perc": int(args.val_perc),
         "fine_tune": int(args.fine_tune),
         "small_net": int(args.small_net),

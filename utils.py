@@ -3,7 +3,6 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 
 
 def show_view(plug_name, dataset):
@@ -33,10 +32,10 @@ def show_view(plug_name, dataset):
     plt.show()
 
 
-def compute_sample_weight(class_weights, y):
-    assert isinstance(class_weights, dict)
-    result = np.array([class_weights[i] for i in y])
-    return result
+# def compute_sample_weight(class_weights, y):
+#     assert isinstance(class_weights, dict)
+#     result = np.array([class_weights[i] for i in y])
+#     return result
 
 
 def get_class_distribution(dataset_obj):
