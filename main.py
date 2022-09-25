@@ -160,16 +160,10 @@ if __name__ == '__main__':
     parser.add_argument("--loss_weights", dest="loss_weights", default=0,
                         help="1 to weight the loss function, 0 otherwise")
 
-    parser.add_argument("--seed", dest="seed", default=42, help="42 for saved split, a number different from 0 "
-                                                                "to create a new train/validation split")
-    parser.add_argument("--val_perc", dest="val_perc", default=20, help="% for validation set")
-
     parser.add_argument("--data_aug", dest="data_aug", default=0,
                         help="1 for data augmentation (on train), 0 otherwise")
     parser.add_argument("--norm", dest="norm", default=0, help="1 to apply normalization on images, 0 otherwise")
     parser.add_argument("--small_net", dest="small_net", default=0, help="1 to use MVCNN_small, 0 otherwise")
-    parser.add_argument("--val_orig", dest="val_orig", default=0,
-                        help="1 to use validation with no augmentation of lipemic samples, 0 otherwise")
 
     args = parser.parse_args()
 
@@ -203,18 +197,7 @@ if __name__ == '__main__':
     BATCH_SIZE = int(args.batch_size)
 
     # dataset and dataloaders
-    if int(args.seed) == 42:
-        print("Load the saved split, using file: ", args.dataset_csv)
-        datasetcsv = pd.read_csv(args.dataset_csv, names=['data', 'id', 'image', 'label', 'split'])
-    else:
-        print("Create a new csv file for split")
-        csv_out = './train_val_dataset_' + str(args.seed) + '.csv'
-        if int(args.val_orig) == 1:
-            # only when we are using augmented_dataset.csv
-            csv_out = './train_with_val_not_augmented_' + str(args.seed) + '.csv'
-        write_csv_split(args.dataset_csv, csv_out, seed=int(args.seed), val_perc=int(args.val_perc),
-                        val_orig=int(args.val_orig))
-        datasetcsv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
+    datasetcsv = pd.read_csv(args.dataset_csv, names=['data', 'id', 'image', 'label', 'split'])
 
     g = datasetcsv.groupby('split')
     train_group = g.get_group('train')  # dataframe train
@@ -306,9 +289,6 @@ if __name__ == '__main__':
         "normalization": int(args.norm),
         "bce:": int(args.bce),
         "loss_weights": int(args.loss_weights),
-        "seed": int(args.seed),
-        "val_orig": int(args.val_orig),
-        "val_perc": int(args.val_perc),
         "fine_tune": int(args.fine_tune),
         "small_net": int(args.small_net),
         "weight_decay": int(args.weight_decay)
@@ -335,99 +315,4 @@ if __name__ == '__main__':
                 bce=int(args.bce))
 
     # Ex: python main.py --epochs 40 --num_classes 1 --name_exp bce --dataset_csv train_val_datasetcsv.csv
-    # --bce 1 --data_aug 1 --loss_weights 0
-
-    # ## check on console
-    # num_epochs = EPOCHS
-    # dataloaders = data_loaders
-    # bce = int(args.bce)
-    #
-    # # for epoch in range(1, num_epochs + 1):
-    # for epoch in range(1, 2):
-    #     print('Epoch {}/{}'.format(epoch, num_epochs))
-    #     print('-' * 10)
-    #
-    #     # Each epoch has a training and validation phase
-    #     for phase in ['train', 'val']:
-    #         if phase == 'train':
-    #             model.train()  # Set model to training mode
-    #         else:
-    #             model.eval()  # Set model to evaluate mode
-    #
-    #         running_loss = []
-    #         running_corrects = []
-    #         all_preds = []
-    #         all_labels = []
-    #         # Iterate over data.
-    #         for id, inputs, labels in dataloaders[phase]:
-    #             inputs = inputs.to(device)
-    #             labels = labels.to(device)
-    #
-    #             # zero the parameter gradients
-    #             optimizer.zero_grad()
-    #
-    #             # forward
-    #             # track history if only in train
-    #             with torch.set_grad_enabled(phase == 'train'):
-    #                 # Get model outputs and calculate loss
-    #                 outputs = model(inputs)
-    #
-    #                 if bce == 1:
-    #                     # quando voglio usare bce loss e l'output del classifier è (b, 1)
-    #                     labels = labels.unsqueeze(1).float()  # [10] int64 --> [10, 1] float32
-    #
-    #                 loss = criterion(outputs, labels)
-    #
-    #                 if bce == 1:
-    #                     # quando voglio usare bce loss e l'output del classifier è (b, 1)
-    #                     preds = outputs > 0.5
-    #                     acc = (preds == labels).float().mean()
-    #                 else:
-    #                     preds = outputs.argmax(dim=-1)
-    #                     acc = (preds == labels).float().mean()
-    #                     # it is the same of (outputs == labels).sum().item() / labels.size(0)
-    #
-    #                 # backward + optimize only if in training phase
-    #                 if phase == 'train':
-    #                     loss.backward()
-    #                     optimizer.step()
-    #
-    #             # statistics
-    #             running_loss.append(loss.item())
-    #             running_corrects.append(acc.item())
-    #
-    #             all_preds.append(preds.cpu())
-    #             all_labels.append(labels.cpu())
-    #
-    #         epoch_loss = sum(running_loss) / len(running_loss)
-    #         epoch_acc = sum(running_corrects) / len(running_corrects)
-    #         if bce == 1:
-    #             all_labels = torch.cat(all_labels, 0).squeeze(1)
-    #             all_preds = torch.cat(all_preds, 0).squeeze(1)
-    #         else:
-    #             all_labels = torch.cat(all_labels, 0)
-    #             all_preds = torch.cat(all_preds, 0)
-    #
-    #         epoch_f1_score = sklearn.metrics.f1_score(all_labels.cpu().numpy(), all_preds.cpu().numpy(),
-    #                                                   zero_division=0)
-    #         epoch_balanced_acc_score = sklearn.metrics.balanced_accuracy_score(all_labels.cpu().numpy(),
-    #                                                                            all_preds.cpu().numpy())
-    #
-    #         # log metrics on comet ml
-    #         experiment.log_metric(phase + '_epoch_loss', epoch_loss, step=epoch)
-    #         experiment.log_metric(phase + '_epoch_acc', epoch_acc, step=epoch)
-    #         # experiment.log_metric(phase + '_weighted_epoch_acc', epoch_weighted_acc, step=epoch)
-    #         experiment.log_metric(phase + '_epoch_f1_score', epoch_f1_score, step=epoch)
-    #         experiment.log_metric(phase + '_epoch_balanced_acc', epoch_balanced_acc_score, step=epoch)
-    #
-    #         # long() --> torch.int64, int() --> torch.int32
-    #         experiment.log_confusion_matrix(title=phase + '_confusion_matrix_' + str(epoch),
-    #                                         y_true=all_labels.cpu().long(), y_predicted=all_preds.cpu().long(),
-    #                                         labels=['emolitico', 'lipemico'], step=epoch,
-    #                                         file_name=phase + '_confusion_matrix_' + str(epoch) + '.json')
-    #
-    #         print('{} Loss: {:.4f} - Acc: {:.4f} '.format(phase, epoch_loss, epoch_acc))
-    #
-    #         print(sklearn.metrics.classification_report(all_labels.cpu(), all_preds.cpu(),
-    #                                                     target_names=['emolitico', 'lipemico']))
-
+    # --bce 1 --data_aug 1 --loss_weights 1

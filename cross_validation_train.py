@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from sklearn.model_selection import StratifiedKFold
 
 
-# todo: riguarda reset weights... resettare mi annulla qualcosa del pretraining ?
+# todo: posizione statistics
 
 def reset_weights(m):
     """

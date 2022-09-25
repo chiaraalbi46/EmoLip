@@ -155,7 +155,7 @@ class TubeDataset(Dataset):
         return image_array
 
 
-def write_csv_split(csv_in, csv_out, seed, val_perc, val_orig):  # open.csv, train_val_dataset.csv
+def write_csv_split(csv_in, csv_out, seed, val_perc):  # open.csv, train_val_dataset.csv
     import csv
     import pandas as pd
 
@@ -176,43 +176,9 @@ def write_csv_split(csv_in, csv_out, seed, val_perc, val_orig):  # open.csv, tra
     val_size = round((val_perc / 100) * len(unique_id))
     train_size = len(unique_id) - val_size
 
-    if val_orig == 1:
-        print("Validation has only original emolitic and lipemic samples.")
-
-        # io vorrei fare una versione che nel validation abbia solo campioni originali (non aumentati) ...
-        # dovrei prendere a caso val perc del totale escludendo gli id che contengono p, q, r ...
-        c = unique_id.tolist()
-        result = [s for s in c if s.endswith('p') or s.endswith('q') or s.endswith('r')]
-
-        emo = []
-        lip = []
-        for k in id_label_map.keys():
-            if id_label_map[k] == 'emolitico':
-                emo.append(k)
-            else:
-                lip.append(k)
-
-        lip_orig = list(set(lip) - set(result))
-
-        # ora devo dividere in train e validation
-        emo_train_split, emo_val_split = torch.utils.data.random_split(emo, [77, 19],
-                                                                       generator=torch.Generator().manual_seed(42))
-        lip_orig_train, lip_orig_val = torch.utils.data.random_split(lip_orig, [8, 19],
-                                                                     generator=torch.Generator().manual_seed(42))
-
-        emo_id_ts = np.array(emo_train_split.dataset)[emo_train_split.indices]
-        lip_id_ts = np.array(lip_orig_train.dataset)[lip_orig_train.indices]
-
-        ti = np.hstack((emo_id_ts, lip_id_ts, result))
-        print(len(ti))
-
-    else:
-
-        print("Validation can have augmented lipemic samples.")
-
-        train_split, val_split = torch.utils.data.random_split(unique_id, [train_size, val_size],
-                                                               generator=torch.Generator().manual_seed(seed))
-        ti = np.array(train_split.dataset)[train_split.indices]  # train_split.indices
+    train_split, val_split = torch.utils.data.random_split(unique_id, [train_size, val_size],
+                                                           generator=torch.Generator().manual_seed(seed))
+    ti = np.array(train_split.dataset)[train_split.indices]  # train_split.indices
 
     # ri etichetto il dataframe
     with open(csv_out, 'w') as csvfile:
@@ -237,6 +203,18 @@ def write_csv_split(csv_in, csv_out, seed, val_perc, val_orig):  # open.csv, tra
 if __name__ == '__main__':
     import pandas as pd
     from utils import get_class_distribution
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Create a csv with train/validation split")
+
+    parser.add_argument("--in_csv", dest="in_csv", default=None,
+                        help="path to csv containing the dataset images and labels grouped by data and id")
+
+    parser.add_argument("--val_perc", dest="val_perc", default=20, help="% for validation set")
+
+    parser.add_argument("--seed", dest="seed", default=42, help="42 for saved split, a number different from 0 "
+                                                                "to create a new train/validation split")
+    args = parser.parse_args()
 
     class_id_map = {'emolitico': 0, 'lipemico': 1}
 
@@ -252,26 +230,13 @@ if __name__ == '__main__':
     target_size = (IMG_HEIGHT, IMG_WIDTH)
     ########################
 
-    BATCH_SIZE = 10
-
-    # datasetcsv = pd.read_csv('augmented_dataset.csv', names=['data', 'id', 'image', 'label'])
-    # csv_in = 'augmented_dataset.csv'
-    # csv_out = './train_val_dataset_augmented_' + str(42) + '.csv'
-    # write_csv_split(csv_in, csv_out, seed=42, val_perc=20, val_orig=0)
-    # new_csv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
+    datasetcsv = pd.read_csv(args.in_csv, names=['data', 'id', 'image', 'label'])
+    csv_out = './train_val_dataset_' + args.seed + '.csv'
+    write_csv_split(args.in_csv, csv_out, seed=args.seed, val_perc=int(args.val_perc))
+    new_csv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
 
     # 20% di 192 = 38 val size --> 38*8 = 304 val images
     # 192 - 38 = 154 train size --> 154*8 = 1232 train images
-
-    # csv_out = './train_with_val_not_augmented' + str(42) + '.csv'
-    # csv_out = './prova.csv'
-    # write_csv_split(csv_in, csv_out, seed=42, val_perc=20, val_orig=1)
-    # new_csv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
-
-    csv_in = './dataset_files/open_new.csv'
-    csv_out = './train_val_dataset_' + str(42) + '.csv'
-    write_csv_split(csv_in, csv_out, seed=42, val_perc=20, val_orig=0)
-    new_csv = pd.read_csv(csv_out, names=['data', 'id', 'image', 'label', 'split'])
 
     g = new_csv.groupby('split')
     train_group = g.get_group('train')  # dataframe train
@@ -297,28 +262,4 @@ if __name__ == '__main__':
 
     cd_v = get_class_distribution(da_v)
 
-    # train_loader = DataLoader(da_t, batch_size=BATCH_SIZE, shuffle=True)
-
-# datasetcsv = pd.read_csv('augmented_dataset.csv', names=['data', 'id', 'image', 'label'])
-# id_group = datasetcsv.groupby(['id'])
-# ids = datasetcsv['id'].values
-# _, idx = np.unique(ids, return_index=True)
-# unique_id = ids[np.sort(idx)]
-#
-# c = unique_id.tolist()
-# result = [s for s in c if s.endswith('p') or s.endswith('q') or s.endswith('s')]
-# s = set(result)
-# temp3 = [x for x in c if x not in s]
-# print(temp3)  # id non aumentati
-#
-# import torch
-# val_size = 38
-#
-# train_split, val_split = torch.utils.data.random_split(temp3, [100, val_size],
-#                                                            generator=torch.Generator().manual_seed(42))
-#
-# train_split1 = torch.utils.data.random_split(result, [54, ], generator=torch.Generator().manual_seed(42))
-#
-# t = train_split + train_split1[0]
-# # train_dev_sets = torch.utils.data.ConcatDataset([train_split, train_split1[0]])
-# # provare ...
+    # Ex: python dataset.py --in_csv ./dataset_files/open.csv
